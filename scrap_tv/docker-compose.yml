@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  tvasa_scraper:
+    build: ./tvasa_scraper
+    networks:
+      - tvproxy
+    environment:
+      TZ: "America/Recife"
+    volumes:
+      - tvasa_excel:/data
+    deploy:
+      labels:
+        traefik.enable: "true"
+        traefik.docker.lbswarm: "true"
+        traefik.http.routers.tvasa_scraper.rule: "Host(`tv-asa.chatfox.com.br`)"
+        traefik.http.routers.tvasa_scraper.entrypoints: "websecure"
+        traefik.http.routers.tvasa_scraper.tls.certresolver: "letsencrypt"
+        traefik.http.services.tvasa_scraper.loadbalancer.server.port: "8000"
+        traefik.http.middlewares.tvasa-compress.compress: "true"
+
+volumes:
+  tvasa_excel: {}
+
+networks:
+  tvproxy:
+    external: true
