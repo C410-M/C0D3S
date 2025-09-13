@@ -1,6 +1,6 @@
 <pre>
 <h1>Downloader YoutuBIU</h1>
-<p>Cançado de enfrentar Sites lentos com vários Spams, para baixar um arquivo do Youtube?</p>
+<p>Cansado(a) de enfrentar Sites lentos com vários Spams, para baixar um arquivo do Youtube?</p>
 <p>Baixe a versão .PY (https://github.com/C410-M/C0D3S/blob/34754173ece336a57e75d7783af8ee8f056e5ccc/Youtube_Downloader/downloader_YoutuBIU.py), ignore os anti-vírus e seja feliz baixando Áudios e Vídeos instântaneamente pelo seu terminal :)</p>
 <h2>Instruções:</h2>
 <ol>
