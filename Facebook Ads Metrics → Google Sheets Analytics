@@ -1,0 +1,281 @@
+/*
+📊 Facebook Ads Metrics → Google Sheets Analytics
+
+O que faz:
+Este script coleta métricas detalhadas de campanhas do Facebook Ads e leads de formulários,
+consolidando tudo em uma planilha do Google Sheets, da planilha as possibilidades são infinitas. Ele processa dados dia a dia, evita
+duplicatas e combina métricas de anúncios com leads gerados para análise completa de ROI.
+
+✅ Funcionalidades principais:
+- Coleta métricas de anúncios por dia (alcance, impressões, cliques, CTR, frequência)
+- Processa leads de formulários Facebook com deduplicação inteligente
+- Combina dados de anúncios + leads para análise de conversão
+- Evita duplicação de dados já processados
+- Processamento por período de datas configurável
+- Logs detalhados para monitoramento
+- Envio de email em caso de erro
+
+🔧 Requisitos de configuração:
+
+1. Access Token do Facebook
+   var accessToken = 'XXXXXXXXX'; // Substitua pelo seu token
+   
+   Permissões necessárias do token:
+   - ads_read - Para acessar métricas de campanhas
+   - leads_retrieval - Para acessar leads dos formulários
+   - ads_management - Para insights detalhados
+   
+   Como obter: Meta for Developers → Meus Apps → Marketing API → Gerar Token
+
+2. Account ID do Facebook Ads
+   var accountId = 'act_XXXXXXXXX'; // ID da conta de anúncios
+   Como encontrar: Meta Business Manager → Configurações → Contas de Anúncios
+
+3. Form ID do Lead Ads
+   var formId = 'XXXXXXXXX'; // ID do formulário de leads
+   Como encontrar: Meta Business Manager → Formulários → Copiar ID
+
+4. ID da Planilha Google Sheets
+   var spreadsheetId = 'XXXXXXXXX'; // ID da planilha
+   Como encontrar: URL da planilha docs.google.com/spreadsheets/d/[ID]/edit
+
+5. Nome da Aba
+   var sheetName = 'Dados'; // Nome da aba onde inserir os dados
+
+6. Período de Análise
+   var startDate = new Date('2025-07-26'); // Data inicial
+   var endDate = new Date(); // Data final (hoje)
+
+📊 Estrutura da planilha criada:
+| Data | Nome da Campanha | Nome do Anúncio | Alcance | Impressões | Cliques no Link | CTR | Frequência | Leads Gerados | Conversas por Mensagem | Leads VC Pro |
+
+🚀 Como usar:
+1. Configure todas as variáveis com seus dados reais
+2. Ajuste o período de datas se necessário
+3. Execute no Google Apps Script
+4. Configure um trigger para automação (diário)
+5. Monitore os logs e emails de erro
+
+⚠️ Importante:
+- O script processa até 20 páginas de leads por segurança
+- Usa rate limiting para evitar bloqueios da API
+- Remove duplicatas baseadas em nome+email+telefone
+- Pula datas já processadas para evitar duplicação
+
+Perfeito para análise de ROI de campanhas Facebook com dados consolidados! 📈
+*/
+
+function getFacebookAdsMetricsWithAdLevel() {
+  var accessToken = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+  var accountId = 'act_xxxxxxxxxxxxxxxxxxx';
+  var formId = 'xxxxxxxxxxxxxxxxxxxxx'; // ID do formulário de lead correto
+
+  try {
+    var spreadsheet = SpreadsheetApp.openById('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
+    var sheet = spreadsheet.getSheetByName('xxxxxxx');
+
+    // Limpar dados antigos (opcional - comente se não quiser limpar)
+    // sheet.clearContents();
+    
+    var startDate = new Date('2025-07-26');
+    var endDate = new Date();
+
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow([
+        "Data", "Nome da Campanha", "Nome do Anúncio", "Alcance", "Impressões",
+        "Cliques no Link", "CTR", "Frequência", "Leads Gerados",
+        "Conversas por Mensagem"
+      ]);
+    }
+
+    // Objeto para armazenar todos os leads por data (nomes únicos)
+    var leadsByDate = {};
+    var totalLeadsProcessed = 0;
+
+    // === BUSCAR TODOS OS LEADS DO FORMULÁRIO ===
+    Logger.log("Iniciando busca de leads...");
+    var nextPage = `https://graph.facebook.com/v22.0/${formId}/leads?limit=100&access_token=${accessToken}`;
+    var pageCount = 0;
+    
+    while (nextPage && pageCount < 20) { // Limite de 20 páginas para segurança
+      pageCount++;
+      Logger.log(`Processando página ${pageCount} de leads...`);
+      
+      var responseLeads = UrlFetchApp.fetch(nextPage);
+      var dataLeads = JSON.parse(responseLeads.getContentText());
+
+      if (dataLeads.data && dataLeads.data.length > 0) {
+        dataLeads.data.forEach(function (lead) {
+          try {
+            var leadDate = new Date(lead.created_time).toISOString().split('T')[0];
+            var name = '';
+            var email = '';
+            var phone = '';
+
+            // Processar campos do lead
+            lead.field_data?.forEach(function (field) {
+              if (!field || !field.name || !field.values) return;
+              
+              // Verifica vários possíveis nomes de campo para nome
+              if (['full_name', 'nome', 'name', 'Nome', 'Nome Completo', 'nome_completo'].includes(field.name.toLowerCase())) {
+                name = field.values[0] || '';
+              }
+              if (['email', 'e-mail', 'email_address'].includes(field.name.toLowerCase())) {
+                email = field.values[0] || '';
+              }
+              if (['phone', 'telefone', 'celular', 'phone_number'].includes(field.name.toLowerCase())) {
+                phone = field.values[0] || '';
+              }
+            });
+
+            // Criar identificador único (combinação de nome, email ou telefone)
+            var leadIdentifier = '';
+            if (name) leadIdentifier = name.trim().toLowerCase();
+            if (email) leadIdentifier += email.trim().toLowerCase();
+            if (!name && !email && phone) leadIdentifier = phone.trim();
+
+            if (leadIdentifier) {
+              if (!leadsByDate[leadDate]) {
+                leadsByDate[leadDate] = new Set();
+              }
+              
+              // Verifica se o lead já foi contado nesta data
+              var alreadyCounted = false;
+              leadsByDate[leadDate].forEach(function(existingLead) {
+                if (existingLead === leadIdentifier) alreadyCounted = true;
+              });
+              
+              if (!alreadyCounted) {
+                leadsByDate[leadDate].add(leadIdentifier);
+                totalLeadsProcessed++;
+              }
+            }
+          } catch (e) {
+            Logger.log("Erro ao processar lead: " + e.message);
+          }
+        });
+      } else {
+        Logger.log("Nenhum dado de lead encontrado na página " + pageCount);
+      }
+
+      nextPage = dataLeads.paging?.next || null;
+      Utilities.sleep(500); // Evitar rate limiting
+    }
+
+    Logger.log(`Total de leads únicos processados: ${totalLeadsProcessed}`);
+    
+    // Para controle de datas já gravadas
+    var dataValues = sheet.getDataRange().getValues();
+    var datesLogged = new Set();
+    for (var i = 1; i < dataValues.length; i++) {
+      if (dataValues[i][0]) datesLogged.add(dataValues[i][0].toString());
+    }
+
+    // Processar métricas dia a dia
+    Logger.log("Iniciando processamento de métricas...");
+    var currentDate = new Date(startDate);
+    
+    while (currentDate <= endDate) {
+      var dateStr = currentDate.toISOString().split('T')[0];
+      Logger.log(`Processando data: ${dateStr}`);
+      
+      var vcProLeads = leadsByDate[dateStr] ? leadsByDate[dateStr].size : 0;
+      var dateAlreadyLogged = datesLogged.has(dateStr);
+
+      // === BUSCAR INSIGHTS DA DATA ATUAL ===
+      var urlInsights = `https://graph.facebook.com/v22.0/${accountId}/insights?level=ad&time_range=${encodeURIComponent(`{"since":"${dateStr}","until":"${dateStr}"}`)}&fields=campaign_name,ad_name,spend,reach,impressions,clicks,ctr,frequency,actions&access_token=${accessToken}`;
+      
+      try {
+        var responseInsights = UrlFetchApp.fetch(urlInsights);
+        var dataInsights = JSON.parse(responseInsights.getContentText());
+
+        if (dataInsights.data && dataInsights.data.length > 0) {
+          var ads = {};
+
+          dataInsights.data.forEach(function (ad) {
+            var key = `${ad.campaign_name}|${ad.ad_name}`;
+
+            if (!ads[key]) {
+              ads[key] = {
+                campaignName: ad.campaign_name,
+                adName: ad.ad_name,
+                reach: 0,
+                impressions: 0,
+                clicks: 0,
+                ctr: 0,
+                frequency: 0,
+                leads: 0,
+                messages: 0,
+                count: 0
+              };
+            }
+
+            var a = ads[key];
+            a.reach += parseInt(ad.reach) || 0;
+            a.impressions += parseInt(ad.impressions) || 0;
+            a.clicks += parseInt(ad.clicks) || 0;
+            a.ctr += parseFloat(ad.ctr) || 0;
+            a.frequency += parseFloat(ad.frequency) || 0;
+            a.count++;
+
+            ad.actions?.forEach(function (action) {
+              if (action.action_type === 'onsite_conversion.lead_grouped') {
+                a.leads += parseInt(action.value) || 0;
+              }
+              if (action.action_type === 'onsite_conversion.messaging_conversation_started_7d') {
+                a.messages += parseInt(action.value) || 0;
+              }
+            });
+          });
+
+          // Gravar dados no sheet
+          for (var key in ads) {
+            var ad = ads[key];
+            
+            if (!dateAlreadyLogged) {
+              sheet.appendRow([
+                dateStr,
+                ad.campaignName,
+                ad.adName,
+                ad.reach,
+                ad.impressions,
+                ad.clicks,
+                (ad.ctr / ad.count).toFixed(2),
+                (ad.frequency / ad.count).toFixed(2),
+                ad.leads,
+                ad.messages,
+                vcProLeads
+              ]);
+            }
+          }
+          
+          datesLogged.add(dateStr);
+        } else if (vcProLeads > 0 && !dateAlreadyLogged) {
+          // Caso não tenha dados de anúncios mas tenha leads VC Pro
+          sheet.appendRow([
+            dateStr, '', '', '', '', '', '', '', '', '', vcProLeads
+          ]);
+          datesLogged.add(dateStr);
+        }
+      } catch (e) {
+        Logger.log(`Erro ao processar insights para ${dateStr}: ${e.message}`);
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+      Utilities.sleep(1000); // Evitar rate limiting
+    }
+
+    Logger.log("Processamento concluído com sucesso!");
+
+  } catch (e) {
+    Logger.log("Erro detalhado: " + e.message);
+    Logger.log("Stack: " + e.stack);
+    
+    // Enviar email de erro (opcional)
+    MailApp.sendEmail({
+      to: "seu-email@exemplo.com",
+      subject: "Erro no script de métricas do Facebook",
+      body: "Ocorreu um erro no script:\n\n" + e.message + "\n\nStack Trace:\n" + e.stack
+    });
+  }
+}
