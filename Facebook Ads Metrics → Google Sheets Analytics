@@ -2,7 +2,7 @@
 📊 Facebook Ads Metrics → Google Sheets Analytics
 
 O que faz:
-Este script coleta métricas detalhadas de campanhas do Facebook Ads e leads de formulários,
+Este script coleta métricas detalhadas de campanhas do Facebook Ads e leads de formulários, desde uma data de origem até o dia da requisição,
 consolidando tudo em uma planilha do Google Sheets, da planilha as possibilidades são infinitas. Ele processa dados dia a dia, evita
 duplicatas e combina métricas de anúncios com leads gerados para análise completa de ROI.
 
