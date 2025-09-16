@@ -1,0 +1,217 @@
+/*
+📊 Facebook Ads Daily Metrics Updater
+
+O que faz:
+Este script atualiza diariamente as métricas do Facebook Ads na planilha, focando APENAS 
+nos dados de hoje. Ele substitui automaticamente os dados existentes da data atual, 
+garantindo sempre informações atualizadas sem duplicação. Ideal para triggers diários.
+
+✅ Funcionalidades principais:
+- Coleta métricas APENAS do dia atual (hoje)
+- Substitui automaticamente dados existentes da mesma data
+- Processa leads do formulário com deduplicação inteligente
+- Agrupa anúncios por campanha + nome do anúncio
+- Otimizado para execução rápida (máximo 5 páginas de leads)
+- Atualização incremental sem afetar dados históricos
+
+🔧 Requisitos de configuração:
+
+1. Access Token do Facebook
+   var accessToken = 'XXXXXXXXX'; // Substitua pelo seu token
+   
+   Permissões necessárias do token:
+   - ads_read - Para acessar métricas de campanhas
+   - leads_retrieval - Para acessar leads dos formulários
+   - ads_management - Para insights detalhados
+   
+   Como obter: Meta for Developers → Meus Apps → Marketing API → Gerar Token
+
+2. Account ID do Facebook Ads
+   var accountId = 'act_XXXXXXXXX'; // ID da conta de anúncios
+   Como encontrar: Meta Business Manager → Configurações → Contas de Anúncios
+
+3. Form ID do Lead Ads
+   var formId = 'XXXXXXXXX'; // ID do formulário de leads
+   Como encontrar: Meta Business Manager → Formulários → Copiar ID
+
+4. ID da Planilha Google Sheets
+   var spreadsheetId = 'XXXXXXXXX'; // ID da planilha
+   Como encontrar: URL da planilha docs.google.com/spreadsheets/d/[ID]/edit
+
+5. Nome da Aba
+   var sheetName = 'Dados'; // Nome da aba onde inserir os dados
+
+📊 Estrutura da planilha:
+| Data | Nome da Campanha | Nome do Anúncio | Alcance | Impressões | Cliques no Link | CTR | Frequência | Leads Gerados | Conversas por Mensagem |
+
+🚀 Como usar:
+1. Configure todas as variáveis com seus dados reais
+2. Execute manualmente para testar
+3. Configure um trigger diário (recomendado: a cada 1-2 horas durante o dia)
+4. O script automaticamente:
+   - Busca dados apenas de hoje
+   - Remove linhas existentes da data atual
+   - Insere dados atualizados
+
+⚠️ Comportamento especial:
+- Remove AUTOMATICAMENTE dados antigos da mesma data antes de inserir novos
+- Processa máximo 5 páginas de leads (otimização para velocidade)
+- Associa leads VC Pro apenas à campanha específica configurada
+- Se não houver anúncios mas houver leads, cria linha apenas com leads
+
+🎯 Ideal para:
+- Monitoramento em tempo real de campanhas
+- Dashboards que precisam de dados sempre atualizados
+- Triggers automáticos a cada hora
+- Acompanhamento de performance diária
+
+Perfeito para manter sua planilha sempre atualizada com os dados mais recentes! ⚡
+*/
+
+function getFacebookAdsMetricsToday_ReplaceIfExists() {
+  var accessToken = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+  var accountId = 'act_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+  var formId = 'xxxxxxxxxxxxxxxxxxxxxx';
+  var spreadsheet = SpreadsheetApp.openById('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
+  var sheet = spreadsheet.getSheetByName('xxxxxxxxxxxxxx');
+  var dateStr = Utilities.formatDate(new Date(), "GMT", "yyyy-MM-dd");
+
+  // Criar cabeçalho se não existir
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "Data", "Nome da Campanha", "Nome do Anúncio", "Alcance", "Impressões",
+      "Cliques no Link", "CTR", "Frequência", "Leads Gerados",
+      "Conversas por Mensagem"
+    ]);
+  }
+
+  // === LEADS DO FORMULÁRIO ===
+  let vcProLeads = 0;
+  let nextPage = `https://graph.facebook.com/v22.0/${formId}/leads?limit=100&access_token=${accessToken}`;
+  const leadsSet = new Set();
+  let pageCount = 0;
+
+  while (nextPage && pageCount < 5) {
+    pageCount++;
+    const response = UrlFetchApp.fetch(nextPage);
+    const data = JSON.parse(response.getContentText());
+
+    (data.data || []).forEach(lead => {
+      const leadDate = new Date(lead.created_time).toISOString().split('T')[0];
+      if (leadDate !== dateStr) return;
+
+      let name = '', email = '', phone = '';
+      (lead.field_data || []).forEach(field => {
+        const fieldName = field.name?.toLowerCase();
+        if (['nome', 'full_name', 'name', 'nome completo', 'nome_completo'].includes(fieldName)) {
+          name = field.values[0] || '';
+        }
+        if (['email', 'e-mail', 'email_address'].includes(fieldName)) {
+          email = field.values[0] || '';
+        }
+        if (['telefone', 'celular', 'phone', 'phone_number'].includes(fieldName)) {
+          phone = field.values[0] || '';
+        }
+      });
+
+      const id = (name + email + phone).trim().toLowerCase();
+      if (id) leadsSet.add(id);
+    });
+
+    nextPage = data.paging?.next || null;
+    Utilities.sleep(300);
+  }
+
+  vcProLeads = leadsSet.size;
+
+  // === INSIGHTS ===
+  const insightsUrl = `https://graph.facebook.com/v22.0/${accountId}/insights?level=ad&time_range=${encodeURIComponent(`{"since":"${dateStr}","until":"${dateStr}"}`)}&fields=campaign_name,ad_name,reach,impressions,clicks,ctr,frequency,actions&access_token=${accessToken}`;
+  const response = UrlFetchApp.fetch(insightsUrl);
+  const insightsData = JSON.parse(response.getContentText());
+
+  // === COLETA DE DADOS EXISTENTES ===
+  const existingRows = sheet.getDataRange().getValues();
+  const headers = existingRows[0];
+  const dataRows = existingRows.slice(1);
+  const deleteIndices = new Set();
+  const existingKeys = {};
+
+  dataRows.forEach((row, i) => {
+    const rowDate = Utilities.formatDate(new Date(row[0]), "GMT", "yyyy-MM-dd");
+    const key = `${rowDate}|${row[1]}|${row[2]}`;
+    existingKeys[key] = i + 2; // índice da planilha (começa em 1)
+  });
+
+  // === AGRUPAR E SUBSTITUIR ===
+  const ads = {};
+
+  (insightsData.data || []).forEach(ad => {
+    const key = ad.campaign_name + "|" + ad.ad_name;
+    if (!ads[key]) {
+      ads[key] = {
+        campaignName: ad.campaign_name,
+        adName: ad.ad_name,
+        reach: 0,
+        impressions: 0,
+        clicks: 0,
+        ctr: 0,
+        frequency: 0,
+        leads: 0,
+        messages: 0,
+        count: 0
+      };
+    }
+
+    const a = ads[key];
+    a.reach += parseInt(ad.reach) || 0;
+    a.impressions += parseInt(ad.impressions) || 0;
+    a.clicks += parseInt(ad.clicks) || 0;
+    a.ctr += parseFloat(ad.ctr) || 0;
+    a.frequency += parseFloat(ad.frequency) || 0;
+    a.count++;
+
+    (ad.actions || []).forEach(action => {
+      if (action.action_type === 'onsite_conversion.lead_grouped') {
+        a.leads += parseInt(action.value) || 0;
+      }
+      if (action.action_type === 'onsite_conversion.messaging_conversation_started_7d') {
+        a.messages += parseInt(action.value) || 0;
+      }
+    });
+  });
+
+  for (let key in ads) {
+    const ad = ads[key];
+    const fullKey = `${dateStr}|${ad.campaignName}|${ad.adName}`;
+
+    // Se já existe, deleta antes de inserir
+    if (existingKeys[fullKey]) {
+      sheet.deleteRow(existingKeys[fullKey]);
+    }
+
+    sheet.appendRow([
+      dateStr,
+      ad.campaignName,
+      ad.adName,
+      ad.reach,
+      ad.impressions,
+      ad.clicks,
+      (ad.ctr / ad.count).toFixed(2),
+      (ad.frequency / ad.count).toFixed(2),
+      ad.leads,
+      ad.messages,
+      ad.campaignName === '[ABO] [FORM] PROJETO: VOCÊ PROFISSIONAL [08.07.25]' ? vcProLeads : 0
+    ]);
+  }
+
+  // Se não houve insights mas houve leads
+  if ((insightsData.data || []).length === 0 && vcProLeads > 0) {
+    const key = `${dateStr}|||`;
+    if (existingKeys[key]) {
+      sheet.deleteRow(existingKeys[key]);
+    }
+    sheet.appendRow([dateStr, '', '', '', '', '', '', '', '', '', vcProLeads]);
+  }
+
+  Logger.log("Atualização finalizada.");
+}
