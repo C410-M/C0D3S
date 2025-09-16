@@ -1,0 +1,197 @@
+/*
+📋 Facebook Lead Ads → Google Sheets Automator
+O que faz:
+Este script automatiza a coleta de leads do Facebook Lead Ads e os sincroniza em uma planilha do Google Sheets. Ele processa múltiplos formulários simultaneamente, evita duplicatas e mantém um histórico organizado com data, nome, WhatsApp e origem do lead.
+✅ Funcionalidades principais:
+
+Coleta leads de vários formulários Facebook em uma única execução
+Remove duplicatas baseadas no número de WhatsApp
+Captura a data/hora real de preenchimento do formulário
+Busca automaticamente o nome de cada formulário
+Adiciona apenas leads novos (não duplica dados existentes)
+Log detalhado para debugging
+
+🔧 Requisitos de configuração:
+1. Access Token do Facebook
+javascriptvar accessToken = 'XXXXXXXXX'; // Substitua pelo seu token
+Permissões necessárias do token:
+
+leads_retrieval - Para acessar os leads dos formulários
+pages_show_list - Para listar páginas associadas
+pages_read_engagement - Para ler dados de engajamento das páginas
+
+Como obter: Meta for Developers → Meus Apps → Criar App → Configurar Lead Ads → Gerar Token
+2. IDs dos Formulários Facebook
+javascriptvar formIds = [
+  'xXxXxXxXxXxXxXxX', // Substitua pelos IDs reais
+  'xXxXxXxXxXxXxXxX'
+];
+Como encontrar: Meta Business Manager → Formulários → Copiar ID do formulário
+3. ID da Planilha Google Sheets
+javascriptvar spreadsheetId = '----------'; // ID da planilha (URL: docs.google.com/spreadsheets/d/[ID]/edit)
+4. Nome da Aba
+javascriptvar sheetName = '---------'; // Nome da aba onde os dados serão inseridos
+📊 Estrutura da planilha criada:
+Data FormulárioNome CompletoWhatsAppFormulário IDNome do Formulário
+🚀 Como usar:
+
+Configure as variáveis com seus dados reais
+Execute no Google Apps Script
+Configure um trigger para automação (diário/semanal)
+Monitore os logs para acompanhar a coleta
+
+Perfeito para quem tem múltiplas campanhas e quer centralizar todos os leads em uma única planilha! 🎯
+*/
+
+function fetchFacebookLeadsFromMultipleForms() {
+  var accessToken = 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+  
+  // ✅ Array com múltiplos IDs de formulários
+  var formIds = [
+    'xXxXxXxXxXxXxXxX',
+    'xXxXxXxXxXxXxXxX',
+    'xXxXxXxXxXxXxXxX',
+    'xXxXxXxXxXxXxXxX',
+    'xXxXxXxXxXxXxXxX',
+    'xXxXxXxXxXxXxXxX',
+    'xXxXxXxXxXxXxXxX',
+    'xXxXxXxXxXxXxXxX'
+    
+
+  ];
+  
+  var spreadsheetId = '------------------------------------------------';
+  var sheetName = '---------';
+
+  try {
+    var spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    var sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+
+    // Cria cabeçalho se não existir
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(["Data Formulário", "Nome Completo", "WhatsApp", "Formulário ID", "Nome do Formulário"]);
+    }
+
+    // Carrega WhatsApps existentes para evitar duplicatas
+    var lastRow = sheet.getLastRow();
+    var existingData = lastRow > 1 ? sheet.getRange(2, 3, lastRow - 1).getValues().flat() : [];
+    var existingWhatsapps = new Set(
+      existingData.map(w => String(w).replace(/\D/g, '').replace(/^0+/, '').trim())
+    );
+
+    var allNewLeads = [];
+
+    // ✅ Loop através de cada formulário
+    formIds.forEach(function(formId) {
+      Logger.log("Processando formulário ID: " + formId);
+      
+      try {
+        // ✅ Primeiro busca o nome do formulário
+        var formName = 'Nome não encontrado';
+        try {
+          var formInfoUrl = `https://graph.facebook.com/v23.0/${formId}?fields=name&access_token=${accessToken}`;
+          var formInfoResponse = UrlFetchApp.fetch(formInfoUrl, { muteHttpExceptions: true });
+          var formInfoData = JSON.parse(formInfoResponse.getContentText());
+          
+          if (formInfoData && formInfoData.name) {
+            formName = formInfoData.name;
+            Logger.log(`📋 Nome do formulário ${formId}: ${formName}`);
+          } else {
+            Logger.log(`⚠️ Não foi possível obter o nome do formulário ${formId}`);
+          }
+        } catch (nameError) {
+          Logger.log(`⚠️ Erro ao buscar nome do formulário ${formId}: ${nameError.message}`);
+        }
+
+        var urlLeads = `https://graph.facebook.com/v23.0/${formId}/leads?access_token=${accessToken}`;
+        var allLeadsFromForm = [];
+        var nextUrl = urlLeads;
+
+        // Paginação para cada formulário
+        while (nextUrl) {
+          var responseLeads = UrlFetchApp.fetch(nextUrl, { muteHttpExceptions: true });
+          var dataLeads = JSON.parse(responseLeads.getContentText());
+          
+          Logger.log(`Resposta da API para formulário ${formId}: ${JSON.stringify(dataLeads)}`);
+
+          if (dataLeads && dataLeads.data) {
+            allLeadsFromForm = allLeadsFromForm.concat(dataLeads.data);
+            nextUrl = dataLeads.paging ? dataLeads.paging.next : null;
+          } else {
+            Logger.log(`Erro ou sem dados para formulário ${formId}: ${JSON.stringify(dataLeads)}`);
+            nextUrl = null;
+          }
+        }
+
+        // Processa leads deste formulário
+        allLeadsFromForm.forEach(function(lead) {
+          var fullName = '';
+          var whatsapp = '';
+          var leadDate = '';
+
+          // ✅ Pega a data REAL de criação do lead no Facebook
+          if (lead.created_time) {
+            var createdDate = new Date(lead.created_time);
+            leadDate = Utilities.formatDate(createdDate, Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm");
+          } else {
+            // Fallback se não tiver data
+            leadDate = 'Data não disponível';
+          }
+
+          if (lead.field_data) {
+            lead.field_data.forEach(function(field) {
+              var fieldName = field.name.toLowerCase();
+              Logger.log(`Campo recebido (${formId}): ${fieldName} | Valor: ${field.values[0]}`);
+
+              if (fieldName.includes('name')) fullName = field.values[0];
+              if (fieldName.includes('phone') || fieldName.includes('telefone') || fieldName.includes('whatsapp')) {
+                whatsapp = field.values[0].replace(/\D/g, '').replace(/^0+/, '');
+              }
+            });
+          }
+
+          // Adiciona lead se for novo
+          if ((fullName || whatsapp) && whatsapp && !existingWhatsapps.has(whatsapp)) {
+            allNewLeads.push([leadDate, fullName, whatsapp, formId, formName]);
+            existingWhatsapps.add(whatsapp);
+            Logger.log(`Novo lead adicionado do formulário ${formName} (${formId}): ${fullName} - ${whatsapp} (preenchido em: ${leadDate})`);
+          }
+        });
+
+        Logger.log(`Formulário ${formId} processado. Leads encontrados: ${allLeadsFromForm.length}`);
+        
+      } catch (formError) {
+        Logger.log(`Erro ao processar formulário ${formId}: ${formError.message}`);
+        // Continue com os próximos formulários mesmo se um falhar
+      }
+    });
+
+    // ✅ Insere todos os novos leads de uma vez
+    if (allNewLeads.length > 0) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, allNewLeads.length, 5).setValues(allNewLeads);
+      Logger.log(`✅ SUCESSO: ${allNewLeads.length} novos leads inseridos na planilha!`);
+      
+      // Log resumo por formulário
+      var summary = {};
+      var formNames = {};
+      allNewLeads.forEach(function(lead) {
+        var formId = lead[3];
+        var formName = lead[4];
+        summary[formId] = (summary[formId] || 0) + 1;
+        formNames[formId] = formName;
+      });
+      
+      Logger.log("📊 Resumo por formulário:");
+      Object.keys(summary).forEach(function(formId) {
+        Logger.log(`   ${formNames[formId]} (${formId}): ${summary[formId]} leads`);
+      });
+      
+    } else {
+      Logger.log("ℹ️ Nenhum lead novo encontrado em nenhum formulário.");
+    }
+
+  } catch (error) {
+    Logger.log("❌ Erro geral: " + error.message);
+    Logger.log("Stack: " + error.stack);
+  }
+}
