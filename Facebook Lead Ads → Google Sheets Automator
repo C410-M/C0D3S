@@ -1,44 +1,52 @@
 /*
 📋 Facebook Lead Ads → Google Sheets Automator
-O que faz:
-Este script automatiza a coleta de leads do Facebook Lead Ads e os sincroniza em uma planilha do Google Sheets. Ele processa múltiplos formulários simultaneamente, evita duplicatas e mantém um histórico organizado com data, nome, WhatsApp e origem do lead.
-✅ Funcionalidades principais:
 
-Coleta leads de vários formulários Facebook em uma única execução
-Remove duplicatas baseadas no número de WhatsApp
-Captura a data/hora real de preenchimento do formulário
-Busca automaticamente o nome de cada formulário
-Adiciona apenas leads novos (não duplica dados existentes)
-Log detalhado para debugging
+O que faz:
+Este script automatiza a coleta de leads do Facebook Lead Ads e os sincroniza em uma 
+planilha do Google Sheets. Ele processa múltiplos formulários simultaneamente, evita 
+duplicatas e mantém um histórico organizado com data, nome, WhatsApp e origem do lead.
+
+✅ Funcionalidades principais:
+- Coleta leads de vários formulários Facebook em uma única execução
+- Remove duplicatas baseadas no número de WhatsApp
+- Captura a data/hora real de preenchimento do formulário
+- Busca automaticamente o nome de cada formulário
+- Adiciona apenas leads novos (não duplica dados existentes)
+- Log detalhado para debugging
 
 🔧 Requisitos de configuração:
+
 1. Access Token do Facebook
-javascriptvar accessToken = 'XXXXXXXXX'; // Substitua pelo seu token
-Permissões necessárias do token:
+   var accessToken = 'XXXXXXXXX'; // Substitua pelo seu token
+   
+   Permissões necessárias do token:
+   - leads_retrieval - Para acessar os leads dos formulários
+   - pages_show_list - Para listar páginas associadas
+   - pages_read_engagement - Para ler dados de engajamento das páginas
+   
+   Como obter: Meta for Developers → Meus Apps → Criar App → Configurar Lead Ads → Gerar Token
 
-leads_retrieval - Para acessar os leads dos formulários
-pages_show_list - Para listar páginas associadas
-pages_read_engagement - Para ler dados de engajamento das páginas
-
-Como obter: Meta for Developers → Meus Apps → Criar App → Configurar Lead Ads → Gerar Token
 2. IDs dos Formulários Facebook
-javascriptvar formIds = [
-  'xXxXxXxXxXxXxXxX', // Substitua pelos IDs reais
-  'xXxXxXxXxXxXxXxX'
-];
-Como encontrar: Meta Business Manager → Formulários → Copiar ID do formulário
-3. ID da Planilha Google Sheets
-javascriptvar spreadsheetId = '----------'; // ID da planilha (URL: docs.google.com/spreadsheets/d/[ID]/edit)
-4. Nome da Aba
-javascriptvar sheetName = '---------'; // Nome da aba onde os dados serão inseridos
-📊 Estrutura da planilha criada:
-Data FormulárioNome CompletoWhatsAppFormulário IDNome do Formulário
-🚀 Como usar:
+   var formIds = [
+     'xXxXxXxXxXxXxXxX', // Substitua pelos IDs reais
+     'xXxXxXxXxXxXxXxX'
+   ];
+   Como encontrar: Meta Business Manager → Formulários → Copiar ID do formulário
 
-Configure as variáveis com seus dados reais
-Execute no Google Apps Script
-Configure um trigger para automação (diário/semanal)
-Monitore os logs para acompanhar a coleta
+3. ID da Planilha Google Sheets
+   var spreadsheetId = '----------'; // ID da planilha (URL: docs.google.com/spreadsheets/d/[ID]/edit)
+
+4. Nome da Aba
+   var sheetName = '---------'; // Nome da aba onde os dados serão inseridos
+
+📊 Estrutura da planilha criada:
+| Data Formulário | Nome Completo | WhatsApp | Formulário ID | Nome do Formulário |
+
+🚀 Como usar:
+1. Configure as variáveis com seus dados reais
+2. Execute no Google Apps Script
+3. Configure um trigger para automação (diário/semanal)
+4. Monitore os logs para acompanhar a coleta
 
 Perfeito para quem tem múltiplas campanhas e quer centralizar todos os leads em uma única planilha! 🎯
 */
@@ -56,8 +64,6 @@ function fetchFacebookLeadsFromMultipleForms() {
     'xXxXxXxXxXxXxXxX',
     'xXxXxXxXxXxXxXxX',
     'xXxXxXxXxXxXxXxX'
-    
-
   ];
   
   var spreadsheetId = '------------------------------------------------';
