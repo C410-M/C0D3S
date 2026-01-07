@@ -5,7 +5,7 @@
 
 *Seu arsenal completo de **hacks** para dominar o marketing digital.*
 
-![Scripts](https://img.shields.io/badge/Scripts-3-1E9E16?style=for-the-badge)
+![Scripts](https://img.shields.io/badge/Scripts-4-1E9E16?style=for-the-badge)
 ![Categoria](https://img.shields.io/badge/Categorias-1-333333?style=for-the-badge)
 ![Open Source](https://img.shields.io/badge/Open%20Source-100%25-1E9E16?style=for-the-badge)
 
